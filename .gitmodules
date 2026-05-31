@@ -1,0 +1,6 @@
+[submodule "external/SpikeGLX_Datafile_Tools"]
+	path = external/SpikeGLX_Datafile_Tools
+	url = https://github.com/jenniferColonell/SpikeGLX_Datafile_Tools.git
+[submodule "external/npy-matlab"]
+	path = external/npy-matlab
+	url = https://github.com/kwikteam/npy-matlab.git
