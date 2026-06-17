@@ -1,4 +1,5 @@
-
+%% Set random seed
+rng(0);
 
 %% initial parameters
 

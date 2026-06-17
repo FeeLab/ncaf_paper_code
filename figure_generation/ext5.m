@@ -1,5 +1,7 @@
-%% import functions
+%% Set random seed
+rng(0);
 
+%% import functions
 addpath('../utils')
 addpath('../external/SpikeGLX_Datafile_Tools/MATLAB');
 addpath('../external/npy-matlab/npy-matlab');

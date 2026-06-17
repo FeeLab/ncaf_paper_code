@@ -1,3 +1,5 @@
+%% Set random seed
+rng(0);
 
 %% import functions
 

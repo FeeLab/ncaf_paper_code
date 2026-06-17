@@ -120,6 +120,9 @@ sigmoidCorr = (1./(1+exp(-k_on*(tvals+tW)))).*(1./(1+exp(k_on*(tvals-tW))));
 convCorr = conv(sigmoidCorr, acorrPlot, 'same');
 convCorr = convCorr/max(convCorr);
 
+%% Set random seed
+rng(0);
+
 %% scale outputs to each other
 % We now scale the data to best fit the convCorr
 convCorrResampled = interp1(tvals, convCorr, tvalsData, 'linear', 'extrap');
