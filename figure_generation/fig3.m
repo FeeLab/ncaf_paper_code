@@ -14,6 +14,7 @@ load('../presorted_data/2025-11-12_Yellow33_Post-Advance_LMAN_BOTM_0_aligned.mat
 unitSignal = full(unitSigSparse);
 
 unitI = 73; %target unit, very well isolated and huge amplitude (~800 uV)
+Nstart = 1;
 Nend = size(unitSignal, 2);
 
 
