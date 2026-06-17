@@ -61,6 +61,51 @@ ylabel('correlation/time (ms^{-1})');
 set(gca, 'TickDir', 'out');
 yline(0)
 
+%% compute median correlation profile of actual units
+%list of units to analyze
+%selected based on sufficient correlation and learning amplitude
+unitVec = [58,59,61,62,65,63,64,68,71,75,148,153,38,36,214];
+runVec = [repmat("2024-11-18_11085_LMAN_nCAF_aligned.mat", 3, 1);
+    repmat("2024-11-21_11085_LMAN_nCAF_aligned.mat", 2, 1);
+    repmat("2024-11-24_11085_LMAN_nCAF_aligned.mat", 5, 1);
+    repmat("2025-11-18_Yellow33_Post-Advance_LMAN_Precise-Alignment_BOTM_1_aligned.mat", 2, 1);
+    repmat("2025-11-19_Yellow33_Post-Advance_LMAN_Precise-Alignment_BOTM_0_aligned.mat", 2, 1);
+    repmat("2025-12-05_11384_Post-Advance_LMAN_Precise-Timing_BOTM_1_aligned.mat", 2, 1)];
+
+Nsim = 1000; %number of bootstrap iterations
+run_name = "nonexistent_run"; %initial value
+ww = 0.02; %width of times to consider
+downsampW = .0005; %downsample data to this time resolution (ms)
+maxW = .001; % window width used to smooth for initial amplitude estimate
+
+FRCorrs = cell(numel(unitVec),1);
+SEs = cell(numel(unitVec),1);
+
+%iterate through units
+for k = 1:numel(unitVec)
+    % load dataset if not already
+    if ~contains(runVec(k), run_name)
+        load(fullfile('../presorted_data', runVec(k)));
+        unitSignal = full(unitSigSparse);
+    end
+
+    %calculate correlation with DAF
+    [tvalsData, frateCorr, confC] = contingency_correlation_uncertainty(unitSignal, np_fs, snipDelay, cW, unitVec(k), unitNum, isNoise, [], true, ww, round(downsampW*np_fs));
+
+    FRCorrs{k} = frateCorr;
+    SEs{k} = diff(confC,1,2) ./ 3.92;
+
+end
+
+% Compute mean corr and CI
+FRCorrs= cat(2, FRCorrs{:});
+SEs = cat(2, SEs{:});
+
+% Calculate estimates
+N = numel(unitVec);
+medianFRCorr = median(FRCorrs, 2);
+medianFRCI = bootci(1000, @(x) median(x, 1), FRCorrs.').';
+
 %% convolve contingent window with autocorrelation
 
 ww = 20;
@@ -75,14 +120,34 @@ sigmoidCorr = (1./(1+exp(-k_on*(tvals+tW)))).*(1./(1+exp(k_on*(tvals-tW))));
 convCorr = conv(sigmoidCorr, acorrPlot, 'same');
 convCorr = convCorr/max(convCorr);
 
+%% scale outputs to each other
+% We now scale the data to best fit the convCorr
+convCorrResampled = interp1(tvals, convCorr, tvalsData, 'linear', 'extrap');
+scaleFactor = convCorrResampled(:) \ medianFRCorr(:);
+
+%% plot results
+% Colors to use
+sigmoidCorrColor = [0,0.447,0.698];    % Blue
+convCorrColor = [0.835,0.369,0];       % Orange
+measuredCorrColor = [0.8,0.475,0.655]; % Pink
+
+% Make the plot
 figure;
-plot(tvals, sigmoidCorr);
 hold on;
-plot(tvals, convCorr);
+plot(tvals, sigmoidCorr, "Color", sigmoidCorrColor);
+plot(tvals, convCorr, "Color", convCorrColor);
+fill([tvalsData, fliplr(tvalsData)], ...
+    [medianFRCI(:,1).', fliplr(medianFRCI(:,2).')] / scaleFactor, ...
+    measuredCorrColor, ...
+    'FaceAlpha', 0.2, ...
+    'LineStyle', 'none');
+plot(tvalsData, medianFRCorr / scaleFactor, ...
+    'Color', measuredCorrColor);
 xline([-2.5 2.5], '--k');
 xlabel('time (ms)');
 ylabel('correlation with DAF (relative)');
 set(gca, 'TickDir', 'out');
+hold off;
 
 %fit gaussian to convolved correlations
 ft = fittype('a*exp(-(x-b)^2/(2*c^2))');
