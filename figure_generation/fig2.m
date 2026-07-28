@@ -41,7 +41,7 @@ runVec = [repmat("2024-11-18_11085_LMAN_nCAF_aligned.mat", 3, 1);
     repmat("2024-11-24_11085_LMAN_nCAF_aligned.mat", 5, 1);
     repmat("2025-11-18_Yellow33_Post-Advance_LMAN_Precise-Alignment_BOTM_1_aligned.mat", 2, 1);
     repmat("2025-11-19_Yellow33_Post-Advance_LMAN_Precise-Alignment_BOTM_0_aligned.mat", 2, 1);
-    repmat("2025-12-05_11384_Post-Advance_LMAN_Precise-Timing_BOTM_1_aligned.mat", 2, 1)];
+    repmat("2025-12-05_11384_Post-Advance_LMAN_Precise-Timing_BOTM_1_aligned.mat", 1, 1)]; % THIS WAS PREVIOUSLY PRESENT TWICE
 
 Nsim = 1000; %number of bootstrap iterations
 ft = fittype('a*exp(-(x-b)^2/(2*c^2))+d'); %gaussian function to fit
@@ -184,7 +184,9 @@ disp("mean delay = "+mean(kernelMu)+" +/- "+std(kernelMu));
 disp("mean width = "+mean(sigmaVals)+" +/- "+std(sigmaVals));
 
 disp("correlation width = "+mean(corrSigma)+" +/- "+std(corrSigma));
+disp("learning width range = "+min(learnSigma)+" to "+max(learnSigma));
 disp("learning width = "+mean(learnSigma)+" +/- "+std(learnSigma));
+
 %% individual kernel parameters
 
 %plotting parameters

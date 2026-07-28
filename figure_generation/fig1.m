@@ -2,7 +2,6 @@
 rng(0);
 
 %% initial parameters
-
 addpath('../utils')
 addpath('../external/SpikeGLX_Datafile_Tools/MATLAB');
 addpath('../external/npy-matlab/npy-matlab');
@@ -130,22 +129,22 @@ bar(numel(learnRTot)/2+groupOffset, mean(learnROutside));
 
 %output values in text
 disp("mean learning rate up = " + mean(learnRTot(direction)) + " Hz/trial");
-disp("std = " + std(learnRTot(direction))/sqrt(sum(direction)));
+disp("sem = " + std(learnRTot(direction))/sqrt(sum(direction)));
 [h, p, ci, stats] = ttest(learnRTot(direction), 0, 'Tail', 'right');
 disp("t-value = "+stats.tstat+", p-value = "+p);
 
 disp("mean learning rate down = " + mean(learnRTot(~direction)) + " Hz/trial");
-disp("std = " + std(learnRTot(~direction))/sqrt(sum(direction)));
+disp("sem = " + std(learnRTot(~direction))/sqrt(sum(~direction)));
 [h, p, ci, stats] = ttest(learnRTot(~direction), 0, 'Tail', 'left');
 disp("t-value = "+stats.tstat+", p-value = "+p);
 
 disp("outside learning rate up = " + mean(learnROutside(direction)) + " Hz/trial");
-disp("std = " + std(learnROutside(direction))/sqrt(sum(direction)));
+disp("sem = " + std(learnROutside(direction))/sqrt(sum(direction)));
 [h, p, ci, stats] = ttest(learnROutside(direction));
 disp("t-value = "+stats.tstat+", p-value = "+p);
 
 disp("outside learning rate down = " + mean(learnROutside(~direction)) + " Hz/trial");
-disp("std = " + std(learnROutside(~direction))/sqrt(sum(direction)));
+disp("sem = " + std(learnROutside(~direction))/sqrt(sum(~direction)));
 [h, p, ci, stats] = ttest(learnROutside(~direction));
 disp("t-value = "+stats.tstat+", p-value = "+p);
 %% nido summary
@@ -199,7 +198,7 @@ offset = offset+sum(thisPlot);
 bar(numel(learnRNido)/2+2*groupOffset, mean(learnRNido));
 
 %output values in text
-disp("outside LMAN rate" + mean(learnRNido) + " Hz/trial");
-disp("std = " + std(learnRNido)/sqrt(numel(learnRNido)));
+disp("outside LMAN rate = " + mean(learnRNido) + " Hz/trial");
+disp("sem = " + std(learnRNido)/sqrt(numel(learnRNido)));
 [h, p, ci, stats] = ttest(learnRNido);
 disp("t-value = "+stats.tstat+", p-value = "+p);

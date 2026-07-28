@@ -9,7 +9,6 @@ addpath('../external/npy-matlab/npy-matlab');
 addpath('../external/ndSparse_G4_2021_03_16');
 addpath('../external/colorcet');
 
-
 %% plot ISI distributions
 
 run_name = "nonexistent_run";

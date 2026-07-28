@@ -22,8 +22,8 @@ runVec = ["2024-05-02_10872_LMAN_nCAF_aligned.mat";
     "2025-12-11_11384_Post-Advance_LMAN_Eligibility_0_aligned.mat"];
 
 
-for k = 1:numel(runVec)
-    load(fullfile('./paper_figure_generation/presorted_data', runVec(k)));
+for j = 1:numel(runVec)
+    load(fullfile('../presorted_data', runVec(j)));
 
     unitSignal = full(unitSigSparse);
         

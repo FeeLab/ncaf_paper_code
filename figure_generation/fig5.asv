@@ -1,0 +1,672 @@
+%% Set random seed
+rng(0);
+
+%% import functions
+
+addpath('../utils')
+addpath('../external/SpikeGLX_Datafile_Tools/MATLAB');
+addpath('../external/npy-matlab/npy-matlab');
+addpath('../external/ndSparse_G4_2021_03_16');
+addpath('../external/colorcet');
+
+%% plot example up
+
+%load data from eligibility trace experiment
+load('../presorted_data/2024-05-03_10872_LMAN_nCAF_aligned.mat');
+unitSignal = full(unitSigSparse);
+
+unitI = 58; %high SNR unit that learned
+
+%plot raster
+plot_learning_figure(unitSignal, trigDelay, unitI, unitNum, silenceTemplate, cW, np_fs, noiseI, median(noiseF)-median(noiseI));
+
+downR = 30; %downsample to 1 ms time bins
+figure;
+ax1 = subplot(2, 1, 1);
+%plot correlation with DAF
+[tvals, frateCorr, confC] = contingency_correlation_uncertainty_eligibility(unitSignal, np_fs, trigDelay, cW, unitI, unitNum, isNoise, ax1, true, .04, downR);
+ax2 = subplot(2, 1, 2);
+%plot learning rates
+[tvals, learnRcurve, confR] = response_width_fitUncertainty_eligibility(unitSignal, np_fs, trigDelay, cW, unitI, unitNum, ax2, true, .04, downR);
+
+
+%% combine across all trials
+
+windowW = 0.3;
+
+%all units with phi>0.2 and learnR>2e-3 across contingent window (see ED Figure 6)
+unitVec = [163,165,167,168,170,171,172,...
+    54,55,56,58,60,64,65,...
+    37,39,42,44,...
+    147,151,152,153,156,...
+    32,36,38,43,...
+    33,38,39,41,...
+    141,142,144,...
+    153,155,156,159,160,161,164,166,167,...
+    151,153,154,155,157,158];
+runVec = [repmat("2024-05-02pcaf_sim_100ms_final_final_FINAL.mat_10872_LMAN_nCAF_aligned.mat", 7, 1);
+    repmat("2024-05-03_10872_LMAN_nCAF_aligned.mat", 7, 1);
+    repmat("2025-11-15_Yellow33_Post-Advance_LMAN_Eligibility_1_aligned.mat", 4, 1);
+    repmat("2025-11-16_Yellow33_Post-Advance_LMAN_Eligibility_0_aligned.mat", 5, 1);
+    repmat("2025-11-20_Yellow33_Post-Advance_LMAN_Eligibility_0_aligned.mat", 4, 1);
+    repmat("2025-11-21_Yellow33_Post-Advance_LMAN_Eligibility_0_aligned.mat", 4, 1);
+    repmat("2025-11-22_Yellow33_Post-Advance_LMAN_Eligibility_0_aligned.mat", 3, 1);
+    repmat("2025-12-10_11384_Post-Advance_LMAN_Eligibility_0_aligned.mat", 9, 1);
+    repmat("2025-12-11_11384_Post-Advance_LMAN_Eligibility_0_aligned.mat", 6, 1)];
+birdID = [1*ones(14, 1); 2*ones(20, 1); 3*ones(15, 1)]; %unique ID for each bird
+
+%load a data file
+load(fullfile('../presorted_data', runVec(end)));
+
+downR = 60; %downsample to 2 ms time bins
+
+learnRTot = zeros(numel(unitVec), round(windowW*np_fs/downR+1)); %learning rates
+corrTot = zeros(numel(unitVec), round(windowW*np_fs/downR+1)); %correlations with DAF
+learnRTotConf = zeros(numel(unitVec), round(windowW*np_fs/downR+1), 2); %CI for learning rats
+corrTotConf = zeros(numel(unitVec), round(windowW*np_fs/downR+1), 2); %CI for correlations
+noiseStartTot = zeros(size(unitVec)); %times of noise onset
+noiseEndTot = zeros(size(unitVec)); %times of noise offset
+cwI = zeros(size(unitVec)); %times of contingent window rising edge
+
+nT = 1000; %noise distribution number of timepoints
+noiseT = linspace(-50, 50, nT); %noise distribution timepoints
+pNoiseTot = zeros(numel(unitVec), numel(noiseT)); %noise distribution
+
+buffF = 0.05; %time after noise burst rising edge to include in analysis (seconds)
+
+for k = 1:numel(unitVec)
+    disp(k);
+
+    % load dataset if not already
+    if ~contains(runVec(k), run_name)
+        load(fullfile('../presorted_data', runVec(k)));
+        unitSignal = full(unitSigSparse);
+    endpcaf_sim_100ms_final_final_FINAL.mat
+
+    %use noise burst onset as time zero
+    tStart = median(noiseI)-trigDelay; %noise burst onset relative to end of contingent window
+    noiseStartTot(k) = tStart; %noise burst onset
+    noiseEndTot(k) = median(noiseF)-trigDelay; %noise burst offset relative to end of contingent window
+    cwI(k) = -(cW+tStart); %start of contingent window relative to noise burst onset
+
+    %calculate correlation with DAF
+    [tvals, frateCorr, confC] = contingency_correlation_uncertainty_eligibility(unitSignal, np_fs, trigDelay+tStart+buffF, windowW, unitVec(k), unitNum, isNoise, [], true, 0, downR);
+    %calculate learning rates
+    [tvals, learnRcurve, confR] = response_width_fitUncertainty_eligibility(unitSignal, np_fs, trigDelay+tStart+buffF, windowW, unitVec(k), unitNum, [], true, 0, downR);
+    tvals = tvals+1000*buffF; %offset timepoints to include times after noise burst onset (t>0)
+    learnRTot(k, :) = learnRcurve;
+    corrTot(k, :) = frateCorr;
+    learnRTotConf(k, :, :) = confR;
+    corrTotConf(k, :, :) = confC;
+
+    %update noise burst histogram
+    pNoise = zeros(size(noiseT));
+    for i = 1:numel(noiseI)
+        thisI = noiseT/1000>=noiseI(i)-trigDelay-tStart & noiseT/1000<=noiseF(i)-trigDelay-tStart;
+        pNoise(thisI) = pNoise(thisI)+1;
+    end
+    %normalize to get noise burst distribution
+    pNoiseTot(k, :) = pNoise/numel(noiseI);
+end
+
+%% elementwise thiel-sen
+
+
+Nstrap = 1000; %bootstrap replicates
+
+regR = zeros(size(tvals)); %normalized learning rates
+regRconf = zeros(size(tvals, 1), 2); %confidence intervals in learning rates
+slopeTot = zeros(size(corrTot)); %slope estimates for each unit
+birdNums = unique(birdID); %IDs per bird
+
+sigmaEta = mean(var(corrTot(:, tvals<-150), 0, 1)); %estimate of noise in correlation measurement
+
+lambda = zeros(size(regR)); %reliability ratio values
+
+for i = 1:numel(regR)
+
+    slopeTot(:, i) = learnRTot(:, i)./corrTot(:, i); %calculate slopes across units
+
+    simLambda = zeros(Nstrap, 1); %bootstrapped reliability ratio
+    simR = zeros(Nstrap, 1); %bootstrapped learning rates
+    for j = 1:Nstrap
+        birdStrap = randsample(max(birdNums), max(birdNums), true); %resample birds
+        x = []; %total set of resampled points, xvals
+        y = []; %total set of resampled points, yvals
+        for k = 1:numel(birdStrap)
+            birdUnits = birdID==birdStrap(k); %select resampled bird
+            birdCorr = corrTot(birdUnits, :); %correlations from this bird
+            birdLearn = learnRTot(birdUnits, :); %learning rates from this bird
+
+            %resample units from this bird and append
+            N = sum(birdUnits);
+            sampI = randsample(N, N, true);
+            corrStrap = birdCorr(sampI, i);
+            learnStrap = birdLearn(sampI, i);
+            x = [x; corrStrap(:)];
+            y = [y; learnStrap(:)];
+        end
+
+        R = median(y./x, 'omitnan'); %median of slopes for Thiel-Sen
+        simR(j) = R;
+
+        simLambda(j) = (mean(x.^2)-sigmaEta)/mean(x.^2); %calculate reliability ratio for this resampling
+    end
+
+    %update values
+    lambdaVals(i) = median(simLambda);
+    regRconf(i, :) = prctile(simR, [2.5, 97.5]); 
+    regR(i) = mean(simR);
+end
+
+%set timepoints with low reliatiblity ratio to have large uncertainty
+ff = 0.5; %cutoff factor for reliability ratio
+magVal = 10; %scaling factor of large fixed uncertainty
+railVal = max(abs(regR)); %uncertainty value relative to max learning rate
+regRconf(lambdaVals<ff, 1) = -magVal*railVal;
+regRconf(lambdaVals<ff, 2) = magVal*railVal;
+
+
+
+%% plot learning per correlation
+
+noiseStart = min(noiseStartTot)*1000; %start of noise burst
+noiseL = median(noiseEndTot-noiseStartTot)*1000; %median burst width
+
+%plot normalized learning rates
+figure;
+hold on;
+plot(tvals, regR);
+%plot confidence intervals
+xconf = [tvals tvals(end:-1:1)];
+yconf = [regRconf(:, 1)' regRconf(end:-1:1, 2)'];
+p=fill(xconf, yconf, 'blue');
+p.FaceAlpha = .1;
+p.EdgeColor = 'none';
+xline(-noiseStart, '--k');
+xline(min(cwI)*1000, '--k');
+yline(0);
+xlabel('time relative to noise burst onset (ms)');
+ylabel('learning rate per unit correlation (Hz/trial)');
+set(gca, 'TickDir', 'out');
+xlim([-200 50]);
+ylim([-0.3 .7]);
+leftLim = get(gca, 'ylim');
+
+%plot DAF distribution
+yyaxis right;
+plot(noiseT, mean(pNoiseTot, 1));
+ylim([leftLim(1)/leftLim(2) 1]);
+ylabel('noise probability');
+%plot FWHM of DAF distribution
+[~, distF] = min(abs(mean(pNoiseTot, 1)-0.5));
+xline([0 noiseT(distF)], '-r');
+
+%% plot deconvolution
+
+%downsample DAF distribution to same timescale as learning rate
+noiseVec = decimate(mean(pNoiseTot, 1), round(10*downR/np_fs*1000));
+noiseVec = noiseVec/sum(noiseVec);
+
+%cutoff value for frequency content
+sigma = 3.3/sqrt(2)/(downR/np_fs*1000); %set by measured width of learning kernel
+
+%approximate autocorrelation as gaussian
+gaussX = -20:1:20;
+gaussVec = exp(-gaussX.^2/(2*sigma^2))/(sqrt(2*pi)*sigma);
+
+%noise autocorrelation (assume white)
+nsize = 20; %size of autocorrelation vector
+ncorr = zeros(1, 2*nsize+1);
+ncorr(nsize+1) = 1e0;
+
+%sweep over values of lambda using Morozov's discrepancy principle
+lambda = 0:0.1:10;
+rmdVec = zeros(size(lambda));
+for i = 1:numel(lambda)
+    %deconvolve
+    J = deconvwnr(regR, noiseVec, ncorr, lambda(i)*gaussVec);
+    rconv = conv(J, noiseVec, 'same');
+    rmdVec(i) = sum((regR-rconv).^2);
+end
+%estimate cutoff value using learning rates far from contingent window
+rmdCut = sum((regR(tvals<-150)).^2)*numel(tvals)/sum(tvals<-150);
+
+%plot lambda cutoff
+figure;
+plot(lambda, rmdVec);
+yline(rmdCut);
+
+%set lambda and recalculate deconvolution
+lambdaCut = lambda(find(rmdVec<rmdCut, 1));
+J = deconvwnr(regR, noiseVec, ncorr, lambdaCut*gaussVec);
+Jout = J;
+
+%jitter learning rate curve to obtain bootstrapped eligibility trace distribution
+Nstrap = 10000; %bootstrap replicates
+Jstrap = zeros(numel(J), Nstrap);
+for i = 1:Nstrap
+    %jitter learning rates
+    rStrap = regR+randn(size(regR)).*diff(regRconf, 1, 2)'/4;
+    %deconvolve
+    Jstrap(:, i) = deconvwnr(rStrap, noiseVec, ncorr, lambdaCut*gaussVec);
+end
+Jconf = prctile(Jstrap, [2.5, 97.5], 2); %confidence intervals
+
+%plot deconvolved eligibility trace
+figure;
+plot(-tvals, Jout);
+hold on;
+xconf = [-tvals -tvals(end:-1:1)];
+yconf = [Jconf(:, 1)' Jconf(end:-1:1, 2)'];
+p=fill(xconf, yconf, 'blue');
+p.FaceAlpha = .1;
+p.EdgeColor = 'none';
+yline(0);
+xline(0, '--k');
+xlim([-50 200]);
+ylim([-0.2, 0.3]);
+xlabel('time relative to LMAN activity (ms)');
+ylabel('learning rate per unit correlation (Hz/trial)');
+set(gca, 'TickDir', 'out');
+
+%calculate distribution of offset times
+cutVals = zeros(size(Jstrap, 2), 1);
+for i = 1:numel(cutVals)
+    cutVals(i) = tvals(find(Jstrap(:, i)'<0&tvals<-50, 1, 'last'));
+end
+
+%output values in text
+disp("cutoff = "+mean(-cutVals)+", 95% CI = "+prctile(-cutVals, 2.5)+" to "+prctile(-cutVals, 97.5));
+
+%% crosscorrelate eligibility trace with 100 ms noise burst to simulate pCAF 
+
+%upsample eligiblity trace to 1 ms time bin
+tUp = min(round(tvals)):max(round(tvals));
+Jup = interp1(tvals, Jout, tUp);
+JstrapUp = zeros(numel(Jup), size(Jstrap, 2));
+for i = 1:size(JstrapUp, 2)
+    JstrapUp(:, i) = interp1(tvals, Jstrap(:, i), tUp);
+end
+
+%use prior of zero for eligibility trace values at long time delays
+tCut = tUp(find(Jup<0&tUp<-100, 1, 'last')); %times after tcut are set to prior
+priorW = 50; %time bin to calculate uncertainty in prior value
+%approximate std of eligibility trace values within times of high confidence
+priorStd = mean(std(JstrapUp(tUp<(tCut+priorW) & tUp>tCut, :), 0, 2), 1);
+
+%set values beyond tcut to a constant small value centered around zero
+priorT = tUp(tUp<tCut);
+for i = 1:size(JstrapUp, 2)
+    JstrapUp(ismember(tUp, priorT), i) = randn*priorStd;
+end
+Jup(tUp<tCut) = 0;
+
+
+nW = 100; %width of noise burst
+premotor_d = 22; % calculated from premotor latency estimate, rounded to nearest ms
+
+%zero-centered vector of eligiblity trace and confidence intervals
+eTrace = zeros(2*sum(round(tUp)<0)+1, 1); 
+eTvals = min(round(tUp)):-min(round(tUp)); %timepoints to sample eligiblity trace
+eTrace(end-numel(Jup)+1:end) = fliplr(Jup);
+eTraceStrap = zeros(numel(eTrace), size(JstrapUp, 2));
+eTraceStrap(end-numel(Jup)+1:end, :) = flipud(JstrapUp);
+
+%define noise burst vector
+noiseVec_pcaf = zeros(size(eTvals));
+noiseVec_pcaf(eTvals>premotor_d & eTvals<=premotor_d+nW) = 1/nW;
+
+%crosscorrelate to get predicted learning rates
+pcaf_learning = xcorr(eTrace, noiseVec_pcaf);
+
+%boostrap crosscorrelations with distribution of eligibility traces
+pcafStrap = zeros(numel(pcaf_learning), size(eTraceStrap,2));
+for i = 1:size(eTraceStrap, 2)
+    pcafStrap(:, i) = xcorr(eTraceStrap(:, i), noiseVec_pcaf);
+end
+
+plotT = 0:300; %plot limits
+plotLearning = pcaf_learning(ceil(numel(pcaf_learning)/2)+plotT);
+plotStrap = pcafStrap(ceil(numel(pcaf_learning)/2)+plotT, :);
+pcafConf = prctile(plotStrap, [2.5, 97.5], 2);
+
+%plot predicted pcaf learning rates
+figure;
+plot(plotT, plotLearning);
+hold on;
+xconf = [plotT plotT(end:-1:1)];
+yconf = [pcafConf(:, 1)' pcafConf(end:-1:1, 2)'];
+p=fill(xconf, yconf, 'blue');
+p.FaceAlpha = .1;
+p.EdgeColor = 'none';
+xlim([0 200]);
+yline(0);
+xlabel('time delay (ms)');
+ylabel('learning rate (relative)');
+
+% Save prediction for later
+save('pCAF_prediction.mat', 'pcafConf', 'plotLearning', ...
+    'plotStrap', 'plotT');
+
+%% Plot premotor latency curve
+% Load data for individual birds
+% Birds to use
+birds = {"11238", "10977", "Yellow33", "Yellow33"};
+subVars = [NaN, NaN, 1, 2];
+results = cell(1, length(birds));
+
+for io = 1:length(birds)
+
+    bird = birds{io};
+    motifVariant = subVars(io);
+
+    % Generate filename
+    if ~isnan(motifVariant)
+        outputName = sprintf("%s-V%i-acoustic-effects.mat", bird, motifVariant);
+    else
+        outputName = sprintf("%s-acoustic-effects.mat", bird);
+    end
+
+    filepath = fullfile("../presorted_data/acoustic-effect-curves/", ...
+        outputName);
+
+    % If there is no output, make it
+    if ~isfile(filepath)
+        fprintf("Analysing %s\n", bird);
+        run("../preprocessing/acoustic_effects.m");
+    else
+        fprintf("Skipping %s\n", bird);
+    end
+
+    results{io} = load(filepath);
+
+end
+
+% Rearrange structs
+nBirds = length(results);
+tAxes = cell(nBirds,1);         % Time axes
+sumEffects = cell(nBirds,1);       % Effect curves
+bootstats = cell(nBirds,1);     % w/ bootstraps
+sumEffectsNS = cell(nBirds,1);     % -1 motif effect curves
+bootstatsNS = cell(nBirds,1);   % w/ bootstraps
+sumEffectsPS = cell(nBirds,1);     % +1 motif effect curves
+bootstatsPS = cell(nBirds,1);   % w/ bootstraps
+    
+for i = 1:nBirds
+
+    data = results{i}.acousticEffectsStruct;
+    tAxes{i} = data.tAxis;
+    sumEffects{i} = data.effect;
+    bootstats{i} = data.bootstat;
+    sumEffectsNS{i} = data.effectNS;
+    bootstatsNS{i} = data.bootstatNS;
+    sumEffectsPS{i} = data.effectPS;
+    bootstatsPS{i} = data.bootstatPS;
+
+end
+
+trials = 1000; % Bootstrap trials
+t = -200e-3:1e-3:200e-3; % Shared time axis
+
+effects = zeros(trials, length(t));
+effectsPS = zeros(trials, length(t));
+effectsNS = zeros(trials, length(t));
+
+rng(0);
+for i = 1:trials
+    for j = 1:nBirds
+        
+        idx = i;
+        sample = bootstats{j}(idx,:);
+        c = interp1(tAxes{j}, sample, t);
+        
+        samplePS = bootstatsPS{j}(idx,:);
+        cPS = interp1(tAxes{j}, samplePS, t);
+       
+        sampleNS = bootstatsNS{j}(idx,:);
+        cNS = interp1(tAxes{j}, sampleNS, t);
+       
+        cEffect = c - (cPS + cNS) / 2;
+
+        effects(i, :) = effects(i,:) + 1/nBirds * cEffect;
+    end
+
+end
+
+EColor = [0,0.447,0.698];
+p = prctile(effects, [2.5 97.5], 1);
+popEffect = mean(effects,1);
+
+figure;
+hold on;
+xConf = [t, fliplr(t)];
+yConf = [p(1,:), fliplr(p(2,:))];
+fill(1e3*xConf, yConf, EColor, 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+plot(1e3*t, popEffect, 'Color', EColor);
+xlabel("Time (ms)");
+ylabel("Magnitude of acoustic difference");
+yline(0);
+yline(0);
+xlim([-50 200]);
+
+% Report peak of curve
+peakCentres = zeros(trials, 1);
+
+for i = 1:trials
+
+    % First, we use findpeaks to find the tallest peak
+    tRange = t*1e3 >= -50 & t*1e3 <= 50; 
+    eSub = effects(i, tRange);
+    tSub = t(tRange)*1e3;
+    [pkVal, loc, peakWidth, ~] = findpeaks(eSub, tSub, ...
+        "NPeaks", 1, ...
+        "SortStr", "descend", ...
+        "WidthReference", "halfheight"); % Find the locations of the peaks
+      
+    % Find points in the half-height zone
+    toUse = (eSub >= pkVal / 2);
+
+    % Only take the central part
+    edges = diff(toUse);
+    starts = find(edges == 1);
+    [~, startIdx] = min(abs(tSub(starts) - loc));
+    startPoint = starts(startIdx);
+
+    ends = find(edges == -1);
+    [~, endIdx] = min(abs(tSub(ends) - loc));
+    endPoint = ends(endIdx);
+        
+    toUse = startPoint:endPoint;
+
+    peakCentres(i) = sum(tSub(toUse) .* eSub(toUse)) ./ sum(eSub(toUse));
+
+end
+
+peakCentre = median(peakCentres, 'omitmissing');
+peakCI = prctile(peakCentres, [2.5, 97.5]);
+
+% Print result for text
+fprintf("Median peak is at %f ms (95%% CI [%f, %f]).\n", ...
+    peakCentre, peakCI(1), peakCI(2));
+
+%% pCAF Plot
+% Set random seed
+rng(42);
+
+% List of files containing processed data
+% Can be generated from extracted data using script in preprocessing
+birdFiles = [...
+    "../presorted_data/pCAF/processed/11190-processed.mat", ...
+    "../presorted_data/pCAF/processed/11220-processed.mat", ...
+    "../presorted_data/pCAF/processed/11316-processed.mat", ...
+    "../presorted_data/pCAF/processed/11325-processed.mat"];
+nBirds = length(birdFiles);
+
+% Load the data
+birdStructs = cell(1, nBirds);
+for i = 1:nBirds
+    birdStructs{i} = load(birdFiles(i));
+end
+
+% nCAF-based prediction
+%prediction = load("../presorted_data/pCAF/pcaf_sim_100ms_final_final_FINAL.mat"); % REPLACE
+prediction = load("../presorted_data/pCAF/pCAF_prediction.mat"); % REPLACE
+
+% Normalize prediction
+pMax = max(prediction.plotLearning);
+prediction.plotLearning = prediction.plotLearning / pMax;
+prediction.pcafConf = prediction.pcafConf / pMax;
+prediction.plotStrap = prediction.plotStrap / pMax;
+
+% Initialize table
+varNames = ["LearningRate", "Weight", ...
+    "Delay", "Correlation", "Offset", "Group"];
+varTypes = ["double", "double", ...
+    "double", "double", "double", "int32"];
+X = table('Size', [0, numel(varNames)], ...
+    'VariableTypes', varTypes, ...
+    'VariableNames', varNames);
+
+% Assemble predictors
+for i = 1:nBirds
+
+    bird = birdStructs{i}.bird; % Get bird data
+    nExperiments = length(bird.delays);
+
+    subX = table('Size', [nExperiments, numel(varNames)], ...
+        'VariableTypes', varTypes, ...
+        'VariableNames', varNames);
+    subX.LearningRate = bird.LR(:);
+    subX.Weight = 1 ./ bird.LRStd(:).^2;
+    subX.Delay = bird.delays(:) + 5e-3;
+    subX.Correlation = bird.corrs(:);
+    subX.Group = i * ones(nExperiments, 1);
+    subX.Offset = bird.startPitches(:) - median(bird.startPitches(:));
+    
+    X = [X; subX]; % Append to the main table
+
+end
+
+X(abs(X.Delay - 18e-3) < 5e-3, :) = [];
+
+% Prepare transformed data
+y = X.LearningRate ./ -X.Correlation; % Normalized learning rate
+g = X.Group; % Bird ID
+w = ones(size(y)); % We do not weight by bootstrapped LR variance
+
+% Bin observations by delay
+centres = [5 25 45 65 85 105 305] * 1e-3; % Centres of clusters
+nClusters = length(centres);  
+
+% Measure the true centres
+clusterCentres = nan(size(centres));
+delayTol = 5e-3;  
+
+for k = 1:nClusters
+
+    inCl = abs(X.Delay - centres(k)) < delayTol;
+    clusterCentres(k) = mean(X.Delay(inCl));
+
+end
+
+clusterCentres = sort(clusterCentres);
+
+% Assign a cluster to each data point
+[~, clusterIdx] = min(abs(X.Delay(:) - clusterCentres(:).'), [], 2);
+
+% Find the cluster centred around 300ms. We know from prior work that
+% there should be no learning here, so this is our noise estimate
+zeroCluster = find(clusterCentres > 200e-3);
+zeroPred = clusterIdx == zeroCluster;
+
+% Get predicted values at cluster centres
+predAtCentres = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotLearning, clusterCentres, "linear", "extrap").';
+
+% Assign each observation the prediction value of its cluster
+predSamples = predAtCentres(clusterIdx);
+
+
+% Get the points at the zero-cluster
+y_zero = y(zeroPred);
+n_zero = sum(zeroPred);
+noiseVar = sum(w(zeroPred) .* y_zero.^2) / n_zero;
+df_pure = n_zero;
+
+% Fit the restricted model
+% y = alpha_k * pred
+num    = accumarray(g(~zeroPred), w(~zeroPred) .* ...
+    predSamples(~zeroPred) .* y(~zeroPred));
+den    = accumarray(g(~zeroPred), w(~zeroPred) .* ...
+    predSamples(~zeroPred).^2);
+alphas = num ./ den;
+
+% Get residuals
+resid_R = y(~zeroPred) - alphas(g(~zeroPred)) .* predSamples(~zeroPred);
+WRSS_R  = sum(w(~zeroPred) .* resid_R.^2);
+df_R    = (height(X) - n_zero) - nBirds; % One scale factor per bird
+
+% Chi-Squared test
+ChiSquaredReduce = WRSS_R / (df_R * noiseVar);
+
+fprintf("Reduced Chi Squared: %f\n", ChiSquaredReduce);
+
+% Associated p-value
+chi2_stat = ChiSquaredReduce * df_R;
+pVal = 1 - chi2cdf(chi2_stat, df_R);
+
+fprintf("p value: %f\n", pVal);
+
+tTest = min(X.Delay):1e-3:max(X.Delay); % Domain of fit curve
+
+% Plot with scales
+cBand = [0.35 0.55 0.75];     % muted blue for CI band
+cFit  = [0.00 0.30 0.60];     % darker blue for data-driven curve
+cPred = [0.85 0.45 0.10];     % orange for prediction
+cPts  = [0.45 0.45 0.45];     % gray for data points
+
+EColor = [0,0.447,0.698];
+PColor = [0.835, 0.369, 0];
+
+% Normalize data by per-bird alpha
+y_norm   = y ./ alphas(g);
+
+% Normalize prediction to match (alpha=1 scale)
+predNorm = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotLearning, tTest, "linear", "extrap");
+predNormCI = interp1(prediction.plotT * 1e-3, ...
+    prediction.pcafConf, tTest, "linear", "extrap");
+predNormBoot = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotStrap, tTest, "linear", "extrap");
+
+% Get means and CIs on scaled values
+meanPts = accumarray(clusterIdx, y_norm) ./ ...
+    accumarray(clusterIdx, ones(size(clusterIdx)));
+SDPts = sqrt(accumarray(clusterIdx, (y_norm - meanPts(clusterIdx)).^2) ./ ...
+    (accumarray(clusterIdx, ones(size(clusterIdx)))-1));
+
+figure; hold on;
+
+% Raw normalized data points
+scatter(X.Delay, y_norm, [], cPts, 'filled', ...
+    'MarkerFaceAlpha', 0.3, 'MarkerEdgeColor', 'none');
+
+% Means
+errorbar(clusterCentres, meanPts, SDPts, "LineStyle", "none", ...
+    "Color", EColor, "Marker", "o", "MarkerFaceColor", "auto", "CapSize", 0);
+%scatter(clusterCentres, meanPts, [], EColor, 'filled');
+
+% Prediction curve
+predNormStd = std(predNormBoot, [], 2);
+xConf = [tTest, fliplr(tTest)];
+yConf = [predNormCI(:,1).', fliplr(predNormCI(:,2).')];
+%yConf = [predNorm - predNormStd', ...
+%    fliplr(predNorm + predNormStd.')];
+fill(xConf, yConf, PColor, "FaceAlpha", 0.4, "LineStyle", "none");
+
+plot(tTest, predNorm, '-', 'Color', PColor, 'LineWidth', 1.5);
+
+xlabel('DAF latency (s)');
+ylabel('Normalized learning rate (a.u.)');
+yline(0);

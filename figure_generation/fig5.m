@@ -111,7 +111,6 @@ end
 
 %% elementwise thiel-sen
 
-
 Nstrap = 1000; %bootstrap replicates
 
 regR = zeros(size(tvals)); %normalized learning rates
@@ -345,4 +344,328 @@ yline(0);
 xlabel('time delay (ms)');
 ylabel('learning rate (relative)');
 
+% Save prediction for later
+save('../presorted_data/pCAF/pCAF_prediction.mat', 'pcafConf', 'plotLearning', ...
+    'plotStrap', 'plotT');
 
+%% Plot premotor latency curve
+% Load data for individual birds
+% Birds to use
+birds = {"11238", "10977", "Yellow33", "Yellow33"};
+subVars = [NaN, NaN, 1, 2];
+results = cell(1, length(birds));
+
+for io = 1:length(birds)
+
+    bird = birds{io};
+    motifVariant = subVars(io);
+
+    % Generate filename
+    if ~isnan(motifVariant)
+        outputName = sprintf("%s-V%i-acoustic-effects.mat", bird, motifVariant);
+    else
+        outputName = sprintf("%s-acoustic-effects.mat", bird);
+    end
+
+    filepath = fullfile("../presorted_data/acoustic-effect-curves/", ...
+        outputName);
+
+    % If there is no output, make it
+    if ~isfile(filepath)
+        fprintf("Analysing %s\n", bird);
+        run("../preprocessing/acoustic_effects.m");
+    else
+        fprintf("Skipping %s\n", bird);
+    end
+
+    results{io} = load(filepath);
+
+end
+
+% Rearrange structs
+nBirds = length(results);
+tAxes = cell(nBirds,1);         % Time axes
+sumEffects = cell(nBirds,1);       % Effect curves
+bootstats = cell(nBirds,1);     % w/ bootstraps
+sumEffectsNS = cell(nBirds,1);     % -1 motif effect curves
+bootstatsNS = cell(nBirds,1);   % w/ bootstraps
+sumEffectsPS = cell(nBirds,1);     % +1 motif effect curves
+bootstatsPS = cell(nBirds,1);   % w/ bootstraps
+    
+for i = 1:nBirds
+
+    data = results{i}.acousticEffectsStruct;
+    tAxes{i} = data.tAxis;
+    sumEffects{i} = data.effect;
+    bootstats{i} = data.bootstat;
+    sumEffectsNS{i} = data.effectNS;
+    bootstatsNS{i} = data.bootstatNS;
+    sumEffectsPS{i} = data.effectPS;
+    bootstatsPS{i} = data.bootstatPS;
+
+end
+
+trials = 1000; % Bootstrap trials
+t = -200e-3:1e-3:200e-3; % Shared time axis
+
+effects = zeros(trials, length(t));
+effectsPS = zeros(trials, length(t));
+effectsNS = zeros(trials, length(t));
+
+rng(0);
+for i = 1:trials
+    for j = 1:nBirds
+        
+        idx = i;
+        sample = bootstats{j}(idx,:);
+        c = interp1(tAxes{j}, sample, t);
+        
+        samplePS = bootstatsPS{j}(idx,:);
+        cPS = interp1(tAxes{j}, samplePS, t);
+       
+        sampleNS = bootstatsNS{j}(idx,:);
+        cNS = interp1(tAxes{j}, sampleNS, t);
+       
+        cEffect = c - (cPS + cNS) / 2;
+
+        effects(i, :) = effects(i,:) + 1/nBirds * cEffect;
+    end
+
+end
+
+EColor = [0,0.447,0.698];
+p = prctile(effects, [2.5 97.5], 1);
+popEffect = mean(effects,1);
+
+figure;
+hold on;
+xConf = [t, fliplr(t)];
+yConf = [p(1,:), fliplr(p(2,:))];
+fill(1e3*xConf, yConf, EColor, 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+plot(1e3*t, popEffect, 'Color', EColor);
+xlabel("Time (ms)");
+ylabel("Magnitude of acoustic difference");
+yline(0);
+yline(0);
+xlim([-50 200]);
+
+% Report peak of curve
+peakCentres = zeros(trials, 1);
+
+for i = 1:trials
+
+    % First, we use findpeaks to find the tallest peak
+    tRange = t*1e3 >= -50 & t*1e3 <= 50; 
+    eSub = effects(i, tRange);
+    tSub = t(tRange)*1e3;
+    [pkVal, loc, peakWidth, ~] = findpeaks(eSub, tSub, ...
+        "NPeaks", 1, ...
+        "SortStr", "descend", ...
+        "WidthReference", "halfheight"); % Find the locations of the peaks
+      
+    % Find points in the half-height zone
+    toUse = (eSub >= pkVal / 2);
+
+    % Only take the central part
+    edges = diff(toUse);
+    starts = find(edges == 1);
+    [~, startIdx] = min(abs(tSub(starts) - loc));
+    startPoint = starts(startIdx);
+
+    ends = find(edges == -1);
+    [~, endIdx] = min(abs(tSub(ends) - loc));
+    endPoint = ends(endIdx);
+        
+    toUse = startPoint:endPoint;
+
+    peakCentres(i) = sum(tSub(toUse) .* eSub(toUse)) ./ sum(eSub(toUse));
+
+end
+
+peakCentre = median(peakCentres, 'omitmissing');
+peakCI = prctile(peakCentres, [2.5, 97.5]);
+
+% Print result for text
+fprintf("Median peak is at %f ms (95%% CI [%f, %f]).\n", ...
+    peakCentre, peakCI(1), peakCI(2));
+
+%% pCAF Plot
+% Set random seed
+rng(42);
+
+% List of files containing processed data
+% Can be generated from extracted data using script in preprocessing
+birdFiles = [...
+    "../presorted_data/pCAF/processed/11190-processed.mat", ...
+    "../presorted_data/pCAF/processed/11220-processed.mat", ...
+    "../presorted_data/pCAF/processed/11316-processed.mat", ...
+    "../presorted_data/pCAF/processed/11325-processed.mat"];
+nBirds = length(birdFiles);
+
+% Load the data
+birdStructs = cell(1, nBirds);
+for i = 1:nBirds
+    birdStructs{i} = load(birdFiles(i));
+end
+
+% nCAF-based prediction
+%prediction = load("../presorted_data/pCAF/pcaf_sim_100ms_final_final_FINAL.mat"); % REPLACE
+prediction = load("../presorted_data/pCAF/pCAF_prediction.mat"); % REPLACE
+
+% Normalize prediction
+pMax = max(prediction.plotLearning);
+prediction.plotLearning = prediction.plotLearning / pMax;
+prediction.pcafConf = prediction.pcafConf / pMax;
+prediction.plotStrap = prediction.plotStrap / pMax;
+
+% Initialize table
+varNames = ["LearningRate", "Weight", ...
+    "Delay", "Correlation", "Offset", "Group"];
+varTypes = ["double", "double", ...
+    "double", "double", "double", "int32"];
+X = table('Size', [0, numel(varNames)], ...
+    'VariableTypes', varTypes, ...
+    'VariableNames', varNames);
+
+% Assemble predictors
+for i = 1:nBirds
+
+    bird = birdStructs{i}.bird; % Get bird data
+    nExperiments = length(bird.delays);
+
+    subX = table('Size', [nExperiments, numel(varNames)], ...
+        'VariableTypes', varTypes, ...
+        'VariableNames', varNames);
+    subX.LearningRate = bird.LR(:);
+    subX.Weight = 1 ./ bird.LRStd(:).^2;
+    subX.Delay = bird.delays(:) + 5e-3;
+    subX.Correlation = bird.corrs(:);
+    subX.Group = i * ones(nExperiments, 1);
+    subX.Offset = bird.startPitches(:) - median(bird.startPitches(:));
+    
+    X = [X; subX]; % Append to the main table
+
+end
+
+X(abs(X.Delay - 18e-3) < 5e-3, :) = [];
+
+% Prepare transformed data
+y = X.LearningRate ./ -X.Correlation; % Normalized learning rate
+g = X.Group; % Bird ID
+w = ones(size(y)); % We do not weight by bootstrapped LR variance
+
+% Bin observations by delay
+centres = [5 25 45 65 85 105 305] * 1e-3; % Centres of clusters
+nClusters = length(centres);  
+
+% Measure the true centres
+clusterCentres = nan(size(centres));
+delayTol = 5e-3;  
+
+for k = 1:nClusters
+
+    inCl = abs(X.Delay - centres(k)) < delayTol;
+    clusterCentres(k) = mean(X.Delay(inCl));
+
+end
+
+clusterCentres = sort(clusterCentres);
+
+% Assign a cluster to each data point
+[~, clusterIdx] = min(abs(X.Delay(:) - clusterCentres(:).'), [], 2);
+
+% Find the cluster centred around 300ms. We know from prior work that
+% there should be no learning here, so this is our noise estimate
+zeroCluster = find(clusterCentres > 200e-3);
+zeroPred = clusterIdx == zeroCluster;
+
+% Get predicted values at cluster centres
+predAtCentres = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotLearning, clusterCentres, "linear", "extrap").';
+
+% Assign each observation the prediction value of its cluster
+predSamples = predAtCentres(clusterIdx);
+
+
+% Get the points at the zero-cluster
+y_zero = y(zeroPred);
+n_zero = sum(zeroPred);
+noiseVar = sum(w(zeroPred) .* y_zero.^2) / n_zero;
+df_pure = n_zero;
+
+% Fit the restricted model
+% y = alpha_k * pred
+num    = accumarray(g(~zeroPred), w(~zeroPred) .* ...
+    predSamples(~zeroPred) .* y(~zeroPred));
+den    = accumarray(g(~zeroPred), w(~zeroPred) .* ...
+    predSamples(~zeroPred).^2);
+alphas = num ./ den;
+
+% Get residuals
+resid_R = y(~zeroPred) - alphas(g(~zeroPred)) .* predSamples(~zeroPred);
+WRSS_R  = sum(w(~zeroPred) .* resid_R.^2);
+df_R    = (height(X) - n_zero) - nBirds; % One scale factor per bird
+
+% Chi-Squared test
+ChiSquaredReduce = WRSS_R / (df_R * noiseVar);
+
+fprintf("Reduced Chi Squared: %f\n", ChiSquaredReduce);
+
+% Associated p-value
+chi2_stat = ChiSquaredReduce * df_R;
+pVal = 1 - chi2cdf(chi2_stat, df_R);
+
+fprintf("p value: %f\n", pVal);
+
+tTest = min(X.Delay):1e-3:max(X.Delay); % Domain of fit curve
+
+% Plot with scales
+cBand = [0.35 0.55 0.75];     % muted blue for CI band
+cFit  = [0.00 0.30 0.60];     % darker blue for data-driven curve
+cPred = [0.85 0.45 0.10];     % orange for prediction
+cPts  = [0.45 0.45 0.45];     % gray for data points
+
+EColor = [0,0.447,0.698];
+PColor = [0.835, 0.369, 0];
+
+% Normalize data by per-bird alpha
+y_norm   = y ./ alphas(g);
+
+% Normalize prediction to match (alpha=1 scale)
+predNorm = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotLearning, tTest, "linear", "extrap");
+predNormCI = interp1(prediction.plotT * 1e-3, ...
+    prediction.pcafConf, tTest, "linear", "extrap");
+predNormBoot = interp1(prediction.plotT * 1e-3, ...
+    prediction.plotStrap, tTest, "linear", "extrap");
+
+% Get means and CIs on scaled values
+meanPts = accumarray(clusterIdx, y_norm) ./ ...
+    accumarray(clusterIdx, ones(size(clusterIdx)));
+SDPts = sqrt(accumarray(clusterIdx, (y_norm - meanPts(clusterIdx)).^2) ./ ...
+    (accumarray(clusterIdx, ones(size(clusterIdx)))-1));
+
+figure; hold on;
+
+% Raw normalized data points
+scatter(X.Delay, y_norm, [], cPts, 'filled', ...
+    'MarkerFaceAlpha', 0.3, 'MarkerEdgeColor', 'none');
+
+% Means
+errorbar(clusterCentres, meanPts, SDPts, "LineStyle", "none", ...
+    "Color", EColor, "Marker", "o", "MarkerFaceColor", "auto", "CapSize", 0);
+%scatter(clusterCentres, meanPts, [], EColor, 'filled');
+
+% Prediction curve
+predNormStd = std(predNormBoot, [], 2);
+xConf = [tTest, fliplr(tTest)];
+yConf = [predNormCI(:,1).', fliplr(predNormCI(:,2).')];
+%yConf = [predNorm - predNormStd', ...
+%    fliplr(predNorm + predNormStd.')];
+fill(xConf, yConf, PColor, "FaceAlpha", 0.4, "LineStyle", "none");
+
+plot(tTest, predNorm, '-', 'Color', PColor, 'LineWidth', 1.5);
+
+xlabel('DAF latency (s)');
+ylabel('Normalized learning rate (a.u.)');
+yline(0);

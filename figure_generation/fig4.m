@@ -10,6 +10,7 @@ addpath('../external/ndSparse_G4_2021_03_16');
 addpath('../external/colorcet');
 
 %% plot trendlines
+rng(0);
 
 %import data
 load('../presorted_data/2025-11-12_Yellow33_Post-Advance_LMAN_BOTM_0_aligned.mat');
@@ -30,6 +31,7 @@ plot_learning_trendlines(unitSignal, np_fs, trigDelay, 76, unitNum, correctBasel
 
 
 %% load single and multiunit
+rng(0);
 
 %four targeted single units
 targetI = [868,127,73,187];
@@ -60,7 +62,7 @@ for k = 1:numel(targetI)
     %compute correlation with noise
     [phi, phiConf] = activity_noise_corr(spikeCount, isNoise);
     
-    %comptue background firing rate fluctuations
+    %compute background firing rate fluctuations
     flucFrac = fr_fluctuations(unitSignal(:, :, lmanUnits), np_fs, trigDelay, cW);
     %import refractory period violation metric
     lman_rpViolation = rp_violation(lmanUnits);
@@ -84,6 +86,7 @@ for k = 1:numel(targetI)
 end
 
 %% plot learning vs correlation
+rng(0);
 
 %sort for plotting order
 [~, sortOrder] = sort(unitDistTot, 'descend');
@@ -131,7 +134,9 @@ disp("alpha = "+f.p2+" +/- "+diff(fCI(:, 2))/2);
 disp("beta = "+f.p1+" +/- "+diff(fCI(:, 1))/2);
 mdl = fitlm(xdata(:, 1), learnRTot);
 disp("r-squared = "+mdl.Rsquared.Ordinary);
+
 %% neuron matrix correlations
+rng(0);
 
 %dataset with many well-isolated single units
 load('../presorted_data/2025-02-18_11208_Post-Advance_LMAN_BOTM_0_aligned.mat');
@@ -178,6 +183,8 @@ CPair = corrVals(upperVals);
 
 
 %% restrict subsequent analysis to single units
+rng(0);
+
 phiConfTot = phiConfTot(isSingleUnit, :);
 confRTot = confRTot(isSingleUnit, :);
 learnRTot = learnRTot(isSingleUnit);
@@ -186,6 +193,7 @@ xdata = xdata(isSingleUnit, :);
 unitNumTot = unitNumTot(isSingleUnit);
 
 %% plot learning vs. distance
+rng(0);
 
 phiTot = xdata(:, 1); %correlation values
 distC = 400; %maximum plot distance
@@ -259,6 +267,7 @@ disp("width (1/e) = "+(-1/fExp.b)+" +/- "+widthCI);
 
 
 %% simulate LMAN neuron grid
+rng(0);
 
 %linear fit of learning rate vs correlation
 fEff = fit(xdata(:, 1), learnRTot, 'poly1');
@@ -349,6 +358,7 @@ learnRSim = learnRSim + randn(size(learnRSim))*learnRCI;
 
 
 %% plot simulation results
+rng(0);
 
 sigmaPlot = sigma(5:2:end); %values to plot
 
@@ -463,6 +473,7 @@ ylim([ax1 ax2], [-0.04 0.14]);
 
 
 %% relative log likelihood across range of sigma
+rng(0);
 
 %confidence intervals for learning rates and correlations
 learnRCI = mean(confRTot(:, 2)-confRTot(:, 1))/4;

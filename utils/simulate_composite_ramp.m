@@ -12,11 +12,13 @@ function [simSignal, burstTrials] = simulate_composite_ramp(fRate, Nsim, np_fs, 
     qVals(2:end) = min(1./integrate(w_t, 1./rVals(2:end), 0), 1000*rVals(2:end));
 
 
-    q = zeros(size(fRate));
-    Ni = numel(fRate);
-    parfor i = 1:Ni
-        q(i) = interp1(rVals, qVals, fRate(1)+(fRate(i)-fRate(1))*f_poisson);
-    end
+    % q = zeros(size(fRate));
+    % Ni = numel(fRate);
+
+    q = interp1(rVals, qVals, fRate(1)+(fRate-fRate(1))*f_poisson);
+    % parfor i = 1:Ni
+    %     q(i) = interp1(rVals, qVals, fRate(1)+(fRate(i)-fRate(1))*f_poisson);
+    % end
     qBurst = interp1(rVals, qVals, burstFR);
 
     pBurst = (fRate-fRate(1)) * f_burst;
@@ -25,7 +27,13 @@ function [simSignal, burstTrials] = simulate_composite_ramp(fRate, Nsim, np_fs, 
     Nt = round(cW*np_fs);
 
     burstTrials = zeros(numel(fRate), Nsim, 'logical');
+
     parfor k = 1:Nsim
+
+        % Set random seed for reproducibility
+        stream = RandStream('Threefry', 'Seed', k);
+        RandStream.setGlobalStream(stream);
+
         thisSim = zeros(round(cW*np_fs), Nj, 'logical');
         for j = 1:Nj
             tSpike = -0.005*rand*np_fs;
@@ -37,6 +45,7 @@ function [simSignal, burstTrials] = simulate_composite_ramp(fRate, Nsim, np_fs, 
             else
                 q_j = q(j);
             end
+            
             while ttest<=Nt
                 alpha = -log(rand);
                 found = false;
@@ -55,7 +64,10 @@ function [simSignal, burstTrials] = simulate_composite_ramp(fRate, Nsim, np_fs, 
                     ttest=ttest+1;
                 end
             end
+        end
+    
         simSignal(:, :, k) = thisSim;
+    
     end
 
 end

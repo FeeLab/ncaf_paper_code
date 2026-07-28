@@ -10,6 +10,7 @@ addpath('../external/ndSparse_G4_2021_03_16');
 addpath('../external/colorcet');
 
 %% generate raster
+rng(0);
 
 load('../presorted_data/2025-11-12_Yellow33_Post-Advance_LMAN_BOTM_0_aligned.mat');
 unitSignal = full(unitSigSparse);
@@ -36,6 +37,7 @@ subplot(3, 1, 3);
 imagesc(silenceTemplate);
 colormap(colorcet('L20'));
 %% plot ISI distribution comparison
+rng(0);
 
 %calculate isi distribution
 [isiVals, isiDist] = compute_ISI_distribution_all(unitSignal, np_fs);    
@@ -90,6 +92,7 @@ set(gca, 'TickDir', 'out');
 xline(0.005); %reference line for definition of burst isi in literature
 
 %% plot pure bursting and pure Poisson comparison
+rng(0);
 
 % calculate spike counts and firing rate across experiment
 binT = 100; %number of motifs to compute mean firing rate
@@ -111,12 +114,13 @@ Nsim = 64; %number of times to simulate
 simSignal_burstOnly = simulate_burst_ramp(fRate, Nsim, np_fs, cW, g, burstFR);
 
 % simulate poisson only model
-Nsim = 64; %number of times to simualte
+Nsim = 64; %number of times to simulate
 simSignal_poissonOnly = simulate_poisson_ramp(fRate, Nsim, np_fs, cW, g, burstFR);
 
 % plot both models
 plot_fano_twoChannel(spikeCount, squeeze(sum(simSignal_burstOnly, 1)), squeeze(sum(simSignal_poissonOnly, 1)));
 %% plot best fit composite model
+rng(0);
 
 % fit burst fraction to data
 Nsim = 16; %number of times to simulate
@@ -142,6 +146,7 @@ title("Unit "+unitI+", c_{burst} = "+c_burst);
 
 
 %% find burst fractions for range of neurons
+rng(0);
 
 %well-isolated single units with substantial learning
 unitVec = [73,242,253,256,764,779,785,787,815,858,868,873,893];
@@ -179,7 +184,6 @@ for k = 1:numel(unitVec)
     %simulate poisson process with relative refractory period
     simSignal = simulate_poisson_neuron_recovery(unitSignal(:, :, unitNum==unitVec(k)), binT, np_fs, g, Nsim);
 
-
     sThresh = -log(.05); %surprisal threshold
     isiThresh = 0.005; %maximum isi for burst
     fracBootstrap = zeros(Nsamp, 1);
@@ -198,6 +202,7 @@ for k = 1:numel(unitVec)
     fracValsSim(:, k) = fracBootstrapSim;
 
     disp(k);
+
 end
 
 % plot results
@@ -222,6 +227,7 @@ disp("p-value = "+p);
 disp("t-value = "+stats.tstat);
 
 %% find burst rate for range of neurons
+rng(0);
 
 %set of very well-isolated units (rp_violation < 0.02)
 unitVec = [73,242,253,256,764,779,785,787,815,858,868,873,893];
@@ -262,17 +268,19 @@ end
 %output values in text
 disp("burst rate = "+mean(rateVals)+" +/- "+std(rateVals));
 disp("burst length = "+mean(burstLengths)+" +/- "+std(burstLengths));
+
 %% find composite model fit parameters for range of neurons
+rng(0);
 
 %set of single neurons with significant learning
-unitVec = [71,73,75,113,127,132,133,134,187];
 runVec = [repmat("2025-11-12_Yellow33_Post-Advance_LMAN_BOTM_0_aligned.mat", 3, 1);
     repmat("2025-02-21_11208_Post-Advance_LMAN_nCAF_0_aligned.mat", 5, 1);
     repmat("2024-04-27_10872_LMAN-X_nCAF_2_aligned.mat", 1, 1)];
 
-Nstrap = 100; %bootstrap replicates
+Nstrap = 100;
 output = zeros(numel(unitVec), Nstrap);
 run_name = "nonexistent_run";
+
 for k = 1:numel(unitVec)
     unitI = unitVec(k);
 
@@ -307,15 +315,23 @@ for k = 1:numel(unitVec)
     % bootstrap fit distribution
     betaStrap = zeros(Nstrap, 1);
     Nsim = 16; %bootstrap replicates
+
     for i = 1:Nstrap
         %calculate mean and variance across motifs from resampled data
+        tic
         [unitx, unity] = fano_plot_count_resample(spikeCount);
+        toc
+
+        tic
         %compute log-likelihood from resample data
         fun = @(x)LL_from_model_resampled(x, fRate, Nsim, np_fs, cW, g, burstFR, unitx, unity);
         %maximize log-likelihood
         output(k, i) = fminbnd(fun, 0, 1/burstFR)*burstFR;
+        toc
     end
+
     disp(k);
+
 end
 
 % plot results
@@ -328,3 +344,8 @@ xlim([0 (size(output, 1)+1)])
 ylabel('fraction of spikes in bursts');
 set(gca, 'TickDir', 'out');
 title('fraction of learned spikes in bursts');
+
+% Get values for paper text
+perBirdValues = mean(output, 2);
+fprintf("Mean fraction of learned spikes in bursts: %f\n", mean(perBirdValues));
+fprintf("S.D. of fraction of learned spikes in bursts: %f\n", std(perBirdValues));
