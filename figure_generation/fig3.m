@@ -225,6 +225,7 @@ disp("excess factor = "+mean(fracVals, 'all')/mean(fracValsSim, 'all'));
 [h, p, ci, stats] = ttest2(mean(fracVals, 1), mean(fracValsSim, 1), 'Tail', 'right');
 disp("p-value = "+p);
 disp("t-value = "+stats.tstat);
+disp("dof = "+stats.df);
 
 %% find burst rate for range of neurons
 rng(0);
@@ -273,6 +274,7 @@ disp("burst length = "+mean(burstLengths)+" +/- "+std(burstLengths));
 rng(0);
 
 %set of single neurons with significant learning
+unitVec = [71,73,75,113,127,132,133,134,187];
 runVec = [repmat("2025-11-12_Yellow33_Post-Advance_LMAN_BOTM_0_aligned.mat", 3, 1);
     repmat("2025-02-21_11208_Post-Advance_LMAN_nCAF_0_aligned.mat", 5, 1);
     repmat("2024-04-27_10872_LMAN-X_nCAF_2_aligned.mat", 1, 1)];
@@ -282,6 +284,7 @@ output = zeros(numel(unitVec), Nstrap);
 run_name = "nonexistent_run";
 
 for k = 1:numel(unitVec)
+
     unitI = unitVec(k);
 
     % load dataset if not already
@@ -318,16 +321,12 @@ for k = 1:numel(unitVec)
 
     for i = 1:Nstrap
         %calculate mean and variance across motifs from resampled data
-        tic
         [unitx, unity] = fano_plot_count_resample(spikeCount);
-        toc
 
-        tic
         %compute log-likelihood from resample data
         fun = @(x)LL_from_model_resampled(x, fRate, Nsim, np_fs, cW, g, burstFR, unitx, unity);
         %maximize log-likelihood
         output(k, i) = fminbnd(fun, 0, 1/burstFR)*burstFR;
-        toc
     end
 
     disp(k);
