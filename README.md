@@ -3,7 +3,7 @@
 This repository contains the code and datasets used to generate the figures in the preprint [Millisecond-scale, single-neuron credit assignment in a songbird](https://www.biorxiv.org/content/10.64898/2026.07.31.740148v1). 
 
 ## System Requirements
-This code is intended to run on MATLAB release R2025a or later (on any compatible operating system). It been tested in MATLAB R2025a on Ubuntu 24.04 LTS. No non-standard hardware is required. 
+This code is intended to run on MATLAB release R2025a or later (on any compatible operating system). It has been tested in MATLAB R2025a on Ubuntu 24.04 LTS. No non-standard hardware is required. 
 
 The following MATLAB toolboxes are required:
 * Curve Fitting Toolbox
