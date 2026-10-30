@@ -3,8 +3,8 @@ function lmanBounds = lman_bounds_from_pads(padSignal, trigDelay, file_path, np_
     songMod = squeeze(sum(padSignal, 2));
     songMod = songMod(round([1:(trigDelay-.06)*np_fs (trigDelay+.04)*np_fs:size(songMod, 1)]), :);
     songMod = smoothdata(songMod, 'gaussian', 0.01*np_fs);
-    padMod = std(songMod)./prctile(songMod,50);
-    [~, removeI] = rmoutliers(padMod, "quartiles", 'ThresholdFactor', 4);
+    padMod = std(songMod)./prctile(songMod,90);
+    [~, removeI] = rmoutliers(padMod, "quartiles", 'ThresholdFactor', 2);
     padMod(removeI) = NaN;
     
     [h, edges] = histcounts(padMod, 100);
