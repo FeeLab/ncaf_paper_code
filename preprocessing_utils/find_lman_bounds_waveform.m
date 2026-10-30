@@ -34,7 +34,7 @@ Mdl = fitSVMPosterior(fitcsvm(XTrain,Y,"Cost",C));
 
 %% Find the optimal bounds by maximum likelihood
 
-sortedPositions = sort(positions, 1, "ascend");
+sortedPositions = sort(positions, 2, "ascend");
 
 boundsToTry = (sortedPositions(1:end-1) + sortedPositions(2:end)) / 2;
 
